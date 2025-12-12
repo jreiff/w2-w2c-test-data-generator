@@ -1,0 +1,24 @@
+{
+  "Report_Entry": [{
+    "Availability_Date": "2024-04-15",
+    "Calendar_Year": "2023-01-01",
+    "Company": "Fidelity Brokerage Services LLC",
+    "Created_Moment": "2024-04-10T10:11:10.975-07:00",
+    "Employee_ID": "a123456",
+    "First_Name_W2C": "Bob",
+    "Last_Name_W2C": "Barker",
+    "Name_or_SSN_Changed": "0",
+    "Social_Security_Number-Truncated": "Bob Barker",
+    "Social_Security_Number-Truncated_51698499_W2C": "111-11-1111",
+    "Worker_from_Primary_W-2": "Bob Barker (a123456)",
+    "XMLNAME_15_-_Payroll_Tax_State_Code": "PA",
+    "XMLNAME_15_-_State_-_Employer_s_State_ID_Number": "101010011",
+    "XMLNAME_15_-_State_-_Employer_s_State_ID_Number_W2C": "101010011",
+    "XMLNAME_16_-_State_Wages_tips__etc_group": "108413.75",
+    "XMLNAME_16_-_State_Wages_tips__etc_group_W2C": "103413.75",
+    "b_-_Employer_identification_number__EIN_": "58-2746441",
+    "c_-_Employer_s_name__address__and_ZIP_code": "Fidelity Brokerage Services LLC&#xa;57582 Cavron St&#xa;Boston, MA 02210&#xa;",
+    "f_-_Employee_s_address": "75063 Cavron St&#xa;Ambler, PA 19002&#xa;"
+  }]
+}
+
