@@ -10,4 +10,7 @@ services:
         value: production
       - key: PORT
         value: 10000
+    # Note: Free tier has 30s request timeout limit
+    # For very large requests (>50k employees), consider using the CLI tool locally
+    # or upgrading to a paid plan for longer timeouts
 

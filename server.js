@@ -11,8 +11,12 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+// Increase timeout for large data generation (5 minutes)
+app.use(express.json({ limit: '100mb' }));
 app.use(express.static('public'));
+
+// Set server timeouts for long-running requests
+const serverTimeout = 5 * 60 * 1000; // 5 minutes
 
 // Cache configuration
 const CACHE_CONFIG = {
@@ -230,10 +234,19 @@ app.get('/health', (req, res) => {
 
 // Generate data endpoint with caching
 app.post('/api/generate', async (req, res) => {
+  // Set a longer timeout for this request
+  req.setTimeout(serverTimeout);
+  res.setTimeout(serverTimeout);
+  
+  let keepAliveInterval = null;
+  
   try {
     const { numEmployees = 10, calendarYear = new Date().getFullYear().toString(), forceRegenerate = false } = req.body;
     
-    if (numEmployees <= 0 || numEmployees > 70000) {
+    const numEmployeesInt = parseInt(numEmployees);
+    const isLargeRequest = numEmployeesInt > 10000;
+    
+    if (numEmployeesInt <= 0 || numEmployeesInt > 70000) {
       return res.status(400).json({ error: 'numEmployees must be between 1 and 70000' });
     }
     
@@ -241,7 +254,38 @@ app.post('/api/generate', async (req, res) => {
       return res.status(400).json({ error: 'calendarYear must be 4 digits' });
     }
     
-    const numEmployeesInt = parseInt(numEmployees);
+    // For large requests, send keep-alive headers periodically
+    if (isLargeRequest) {
+      // Send headers immediately to prevent timeout
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Transfer-Encoding': 'chunked',
+        'Connection': 'keep-alive'
+      });
+      
+      // Send periodic keep-alive during generation
+      keepAliveInterval = setInterval(() => {
+        try {
+          res.write(' '); // Send a space to keep connection alive
+        } catch (e) {
+          if (keepAliveInterval) {
+            clearInterval(keepAliveInterval);
+            keepAliveInterval = null;
+          }
+        }
+      }, 10000); // Every 10 seconds
+      
+      // Clean up interval when done
+      const cleanup = () => {
+        if (keepAliveInterval) {
+          clearInterval(keepAliveInterval);
+          keepAliveInterval = null;
+        }
+      };
+      res.on('close', cleanup);
+      res.on('finish', cleanup);
+    }
+    
     let data;
     let cacheHit = false;
     let cacheSource = null;
@@ -265,6 +309,13 @@ app.post('/api/generate', async (req, res) => {
     if (!data) {
       try {
         const startTime = Date.now();
+        console.log(`Starting generation for ${numEmployeesInt} employees...`);
+        
+        // For very large requests, log progress
+        if (numEmployeesInt > 20000) {
+          console.log(`Large request detected (${numEmployeesInt} employees). This may take several minutes...`);
+        }
+        
         data = generateEmployeeData(numEmployeesInt, calendarYear);
         const generationTime = Date.now() - startTime;
         
@@ -276,27 +327,56 @@ app.post('/api/generate', async (req, res) => {
         console.log(`Generated data for ${numEmployeesInt} employees (${calendarYear}) in ${generationTime}ms`);
       } catch (genError) {
         console.error('Generation error:', genError);
+        if (keepAliveInterval) {
+          clearInterval(keepAliveInterval);
+        }
         return res.status(500).json({ error: genError.message });
       }
     } else {
       console.log(`Cache hit (${cacheSource}) for ${numEmployeesInt} employees (${calendarYear})`);
     }
     
+    // Clear keep-alive interval before sending response
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval);
+      keepAliveInterval = null;
+    }
+    
     const totalW2s = data.employees.reduce((sum, emp) => sum + emp.w2s.Report_Entry.length, 0);
     const totalW2Cs = data.employees.reduce((sum, emp) => sum + emp.w2cs.Report_Entry.length, 0);
     
-    res.json({
-      success: true,
-      employees: data.employees.length,
-      totalW2s,
-      totalW2Cs,
-      cached: cacheHit,
-      cacheSource: cacheSource,
-      data
-    });
+    if (isLargeRequest) {
+      // For chunked response, send the JSON
+      const response = JSON.stringify({
+        success: true,
+        employees: data.employees.length,
+        totalW2s,
+        totalW2Cs,
+        cached: cacheHit,
+        cacheSource: cacheSource,
+        data
+      });
+      res.write(response);
+      res.end();
+    } else {
+      res.json({
+        success: true,
+        employees: data.employees.length,
+        totalW2s,
+        totalW2Cs,
+        cached: cacheHit,
+        cacheSource: cacheSource,
+        data
+      });
+    }
   } catch (error) {
     console.error('Error in /api/generate:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval);
+    }
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
   }
 });
 
@@ -526,8 +606,13 @@ app.get('/', (req, res) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`W2/W2C Test Data Generator API running on port ${PORT}`);
   console.log(`Health check: http://0.0.0.0:${PORT}/health`);
 });
+
+// Configure server timeouts for long-running requests
+server.keepAliveTimeout = serverTimeout;
+server.headersTimeout = serverTimeout + 1000; // Slightly longer than keepAliveTimeout
+server.requestTimeout = serverTimeout;
 
